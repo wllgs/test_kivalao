@@ -1,0 +1,187 @@
+{
+  "name": "Workflow 1 - Distribution",
+  "active": false,
+  "nodes": [
+    {
+      "id": "Webhook_Trigger",
+      "name": "Distribution Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 200],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "kivalao/distribution",
+        "responseMode": "onReceived",
+        "responseData": "default",
+        "options": {
+          "responseCode": 200,
+          "responseBody": "Codes en cours d'envoi"
+        }
+      }
+    },
+    {
+      "id": "Fetch_Offers",
+      "name": "GET Partner Offers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [500, 200],
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "GET",
+        "url": "={{$env.KIVALAO_API_URL}}/partnerships/offers",
+        "queryParameters": [
+          {
+            "name": "partnerId",
+            "value": "={{$json[\"partnerId\"]}}"
+          }
+        ],
+        "options": {
+          "response": {
+            "response": "json"
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "kivalao-jwt",
+          "name": "Kivalao JWT"
+        }
+      }
+    },
+    {
+      "id": "Loop_Offers",
+      "name": "Split Offers",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [800, 200],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "Generate_Code",
+      "name": "POST Generate Code",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1100, 200],
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "POST",
+        "url": "={{$env.KIVALAO_API_URL}}/code/generate",
+        "jsonParameters": true,
+        "options": {
+          "response": {
+            "response": "json"
+          }
+        },
+        "bodyParametersJson": "={\"offerId\": $json[\"id\"], \"clientEmail\": $json(\"clientEmail\"), \"channel\": \"automation\"}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "kivalao-jwt",
+          "name": "Kivalao JWT"
+        }
+      }
+    },
+    {
+      "id": "Aggregate_Email",
+      "name": "Build Email Payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1400, 200],
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "email",
+              "value": "={{$json(\"clientEmail\")}}"
+            },
+            {
+              "name": "codes",
+              "value": "={{$items(\"Generate_Code\").map(item => item.json.codeString).join(', ')}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Send_Email",
+      "name": "SendGrid - Send",
+      "type": "n8n-nodes-base.sendEmail",
+      "typeVersion": 2,
+      "position": [1675, 200],
+      "parameters": {
+        "fromEmail": "codes@kivalao.app",
+        "toEmail": "={{$json[\"email\"]}}",
+        "subject": "Vos offres partenaires",
+        "text": "Voici vos codes exclusifs : {{$json.codes}}"
+      }
+    }
+  ],
+  "connections": {
+    "Distribution Webhook": {
+      "main": [
+        [
+          {
+            "node": "GET Partner Offers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Partner Offers": {
+      "main": [
+        [
+          {
+            "node": "Split Offers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Offers": {
+      "main": [
+        [
+          {
+            "node": "POST Generate Code",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Email Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST Generate Code": {
+      "main": [
+        [
+          {
+            "node": "Split Offers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Email Payload": {
+      "main": [
+        [
+          {
+            "node": "SendGrid - Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

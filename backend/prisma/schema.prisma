@@ -1,0 +1,181 @@
+// Prisma schema for Kivalao platform
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  OWNER
+  STAFF
+  ADMIN
+}
+
+enum PartnershipStatus {
+  PENDING
+  ACTIVE
+  PAUSED
+  REJECTED
+  BLOCKED
+}
+
+enum OfferStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+}
+
+enum CommissionType {
+  PERCENTAGE
+  FLAT
+}
+
+enum CodeStatus {
+  ISSUED
+  REDEEMED
+  EXPIRED
+  CANCELLED
+}
+
+enum TransactionStatus {
+  DUE
+  PARTIALLY_PAID
+  PAID
+  DISPUTED
+  VOID
+}
+
+model User {
+  id                 String           @id @default(uuid())
+  email              String           @unique
+  passwordHash       String
+  companyName        String
+  contactName        String?
+  phoneNumber        String?
+  websiteUrl         String?
+  addressLine1       String?
+  addressLine2       String?
+  city               String?
+  postalCode         String?
+  country            String?          @default("FR")
+  role               UserRole         @default(OWNER)
+  timezone           String?          @default("Europe/Paris")
+  isEmailVerified    Boolean          @default(false)
+  lastLoginAt        DateTime?
+
+  partnershipsA      Partnership[]    @relation("PartnerA")
+  partnershipsB      Partnership[]    @relation("PartnerB")
+  offersCreated      Offer[]          @relation("OfferOwner")
+  targetOffers       Offer[]          @relation("TargetAudience")
+  codesIssued        GeneratedCode[]  @relation("CodeIssuer")
+  codesReferred      GeneratedCode[]  @relation("CodeReferrer")
+  codesRedeemed      GeneratedCode[]  @relation("CodeRedeemer")
+  transactionsToGain Transaction[]    @relation("ReferringPartner")
+  transactionsToPay  Transaction[]    @relation("RedeemingPartner")
+
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+}
+
+model Partnership {
+  id           String             @id @default(uuid())
+  partnerAId   String
+  partnerBId   String
+  status       PartnershipStatus  @default(PENDING)
+  inviteToken  String             @unique
+  metadata     Json?
+  activatedAt  DateTime?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  partnerA     User               @relation("PartnerA", fields: [partnerAId], references: [id])
+  partnerB     User               @relation("PartnerB", fields: [partnerBId], references: [id])
+  offers       Offer[]
+
+  @@unique([partnerAId, partnerBId])
+  @@index([status])
+}
+
+model Offer {
+  id                  String          @id @default(uuid())
+  title               String
+  description         String?
+  ownerId             String
+  targetAudienceId    String
+  partnershipId       String?
+  status              OfferStatus     @default(ACTIVE)
+  commissionType      CommissionType  @default(PERCENTAGE)
+  commissionValue     Decimal         @db.Decimal(10, 2)
+  currency            String          @default("EUR")
+  redemptionNotes     String?
+  maxPerClient        Int?
+  isStackable         Boolean         @default(false)
+  validFrom           DateTime?
+  validTo             DateTime?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  owner               User            @relation("OfferOwner", fields: [ownerId], references: [id])
+  targetAudience      User            @relation("TargetAudience", fields: [targetAudienceId], references: [id])
+  partnership         Partnership?    @relation(fields: [partnershipId], references: [id])
+  codes               GeneratedCode[]
+}
+
+model GeneratedCode {
+  id                  String         @id @default(uuid())
+  codeString          String         @unique
+  offerId             String
+  issuedById          String
+  referringPartnerId  String
+  redeemedById        String?
+  clientEmail         String
+  status              CodeStatus     @default(ISSUED)
+  expiresAt           DateTime?
+  redeemedAt          DateTime?
+  issuedAt            DateTime       @default(now())
+  purchaseHintValue   Decimal?       @db.Decimal(10, 2)
+  metadata            Json?
+  transaction         Transaction?
+
+  offer               Offer          @relation(fields: [offerId], references: [id])
+  issuer              User           @relation("CodeIssuer", fields: [issuedById], references: [id])
+  referringPartner    User           @relation("CodeReferrer", fields: [referringPartnerId], references: [id])
+  redeemedBy          User?          @relation("CodeRedeemer", fields: [redeemedById], references: [id])
+
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@index([clientEmail])
+  @@index([status])
+}
+
+model Transaction {
+  id                  String             @id @default(uuid())
+  codeId              String             @unique
+  referringPartnerId  String
+  redeemingPartnerId  String
+  commissionAmount    Decimal            @db.Decimal(12, 2)
+  currency            String             @default("EUR")
+  saleAmount          Decimal?           @db.Decimal(12, 2)
+  status              TransactionStatus  @default(DUE)
+  dueDate             DateTime?
+  paidAt              DateTime?
+  notes               String?
+  metadata            Json?
+
+  code                GeneratedCode      @relation(fields: [codeId], references: [id])
+  referringPartner    User               @relation("ReferringPartner", fields: [referringPartnerId], references: [id])
+  redeemingPartner    User               @relation("RedeemingPartner", fields: [redeemingPartnerId], references: [id])
+
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  @@index([referringPartnerId])
+  @@index([redeemingPartnerId])
+  @@index([status])
+}
+

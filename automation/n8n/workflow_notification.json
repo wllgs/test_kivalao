@@ -1,0 +1,143 @@
+{
+  "name": "Workflow 2 - Redemption Notification",
+  "active": false,
+  "nodes": [
+    {
+      "id": "Webhook",
+      "name": "Redemption Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 200],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "kivalao/redemption",
+        "responseMode": "onReceived",
+        "options": {
+          "responseCode": 200,
+          "responseBody": "Notification queued"
+        }
+      }
+    },
+    {
+      "id": "Fetch_Transaction",
+      "name": "GET Transaction",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [500, 200],
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "GET",
+        "url": "={{$env.KIVALAO_API_URL}}/transactions/{{$json[\"transactionId\"]}}",
+        "options": {
+          "response": {
+            "response": "json"
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "kivalao-jwt",
+          "name": "Kivalao JWT"
+        }
+      }
+    },
+    {
+      "id": "Set_Messages",
+      "name": "Prepare Emails",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [800, 200],
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "referrerEmail",
+              "value": "={{$json[\"referringPartner\"].email}}"
+            },
+            {
+              "name": "redeemerEmail",
+              "value": "={{$json[\"redeemingPartner\"].email}}"
+            },
+            {
+              "name": "referrerBody",
+              "value": "=Votre client vient d'utiliser son code chez {{$json.redeemingPartner.companyName}}. Commission due : {{$json.commissionAmount}} {{$json.currency}}."
+            },
+            {
+              "name": "redeemerBody",
+              "value": "=Vous devez {{$json.commissionAmount}} {{$json.currency}} a {{$json.referringPartner.companyName}} pour le code {{$json.code.codeString}}."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Email_Referrer",
+      "name": "Email Referrer",
+      "type": "n8n-nodes-base.sendEmail",
+      "typeVersion": 2,
+      "position": [1100, 120],
+      "parameters": {
+        "fromEmail": "notifications@kivalao.app",
+        "toEmail": "={{$json[\"referrerEmail\"]}}",
+        "subject": "Code valide chez un partenaire",
+        "text": "={{$json[\"referrerBody\"]}}"
+      }
+    },
+    {
+      "id": "Email_Redeemer",
+      "name": "Email Redeemer",
+      "type": "n8n-nodes-base.sendEmail",
+      "typeVersion": 2,
+      "position": [1100, 280],
+      "parameters": {
+        "fromEmail": "notifications@kivalao.app",
+        "toEmail": "={{$json[\"redeemerEmail\"]}}",
+        "subject": "Commission a verser",
+        "text": "={{$json[\"redeemerBody\"]}}"
+      }
+    }
+  ],
+  "connections": {
+    "Redemption Webhook": {
+      "main": [
+        [
+          {
+            "node": "GET Transaction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Transaction": {
+      "main": [
+        [
+          {
+            "node": "Prepare Emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Emails": {
+      "main": [
+        [
+          {
+            "node": "Email Referrer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email Redeemer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
