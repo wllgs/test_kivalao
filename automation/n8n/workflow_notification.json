@@ -1,5 +1,5 @@
 {
-  "name": "Workflow 2 - Redemption Notification",
+  "name": "Kivalao - Redemption notification",
   "active": false,
   "nodes": [
     {
@@ -7,14 +7,23 @@
       "name": "Redemption Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [200, 200],
+      "position": [
+        200,
+        200
+      ],
       "parameters": {
         "httpMethod": "POST",
         "path": "kivalao/redemption",
-        "responseMode": "onReceived",
+        "responseMode": "lastNode",
         "options": {
           "responseCode": 200,
-          "responseBody": "Notification queued"
+          "responseBody": "{\"status\":\"accepted\"}",
+          "responseHeaders": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
         }
       }
     },
@@ -23,7 +32,10 @@
       "name": "GET Transaction",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
-      "position": [500, 200],
+      "position": [
+        500,
+        200
+      ],
       "parameters": {
         "authentication": "headerAuth",
         "requestMethod": "GET",
@@ -46,7 +58,10 @@
       "name": "Prepare Emails",
       "type": "n8n-nodes-base.set",
       "typeVersion": 1,
-      "position": [800, 200],
+      "position": [
+        800,
+        200
+      ],
       "parameters": {
         "keepOnlySet": true,
         "values": {
@@ -76,9 +91,12 @@
       "name": "Email Referrer",
       "type": "n8n-nodes-base.sendEmail",
       "typeVersion": 2,
-      "position": [1100, 120],
+      "position": [
+        1100,
+        120
+      ],
       "parameters": {
-        "fromEmail": "notifications@kivalao.app",
+        "fromEmail": "={{$env.NOTIFICATION_FROM_EMAIL || 'notifications@kivalao.app'}}",
         "toEmail": "={{$json[\"referrerEmail\"]}}",
         "subject": "Code valide chez un partenaire",
         "text": "={{$json[\"referrerBody\"]}}"
@@ -89,12 +107,31 @@
       "name": "Email Redeemer",
       "type": "n8n-nodes-base.sendEmail",
       "typeVersion": 2,
-      "position": [1100, 280],
+      "position": [
+        1100,
+        280
+      ],
       "parameters": {
-        "fromEmail": "notifications@kivalao.app",
+        "fromEmail": "={{$env.NOTIFICATION_FROM_EMAIL || 'notifications@kivalao.app'}}",
         "toEmail": "={{$json[\"redeemerEmail\"]}}",
-        "subject": "Commission a verser",
+        "subject": "Commission \u00e0 verser",
         "text": "={{$json[\"redeemerBody\"]}}"
+      }
+    },
+    {
+      "id": "Respond_Ack",
+      "name": "Respond to caller",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1400,
+        200
+      ],
+      "parameters": {
+        "responseBody": "{\"status\":\"notified\"}",
+        "responseCode": 200,
+        "responseData": "lastNode",
+        "responseMode": "onReceived"
       }
     }
   ],
@@ -137,6 +174,33 @@
             "index": 0
           }
         ]
+      ]
+    },
+    "Email Referrer": {
+      "main": [
+        [
+          {
+            "node": "Respond to caller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Redeemer": {
+      "main": [
+        [
+          {
+            "node": "Respond to caller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to caller": {
+      "main": [
+        []
       ]
     }
   }

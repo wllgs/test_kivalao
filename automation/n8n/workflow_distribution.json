@@ -1,5 +1,5 @@
 {
-  "name": "Workflow 1 - Distribution",
+  "name": "Kivalao - Offer distribution",
   "active": false,
   "nodes": [
     {
@@ -7,15 +7,24 @@
       "name": "Distribution Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [200, 200],
+      "position": [
+        200,
+        200
+      ],
       "parameters": {
         "httpMethod": "POST",
         "path": "kivalao/distribution",
-        "responseMode": "onReceived",
+        "responseMode": "lastNode",
         "responseData": "default",
         "options": {
           "responseCode": 200,
-          "responseBody": "Codes en cours d'envoi"
+          "responseBody": "Codes en cours d'envoi",
+          "responseHeaders": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
         }
       }
     },
@@ -24,7 +33,10 @@
       "name": "GET Partner Offers",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
-      "position": [500, 200],
+      "position": [
+        500,
+        200
+      ],
       "parameters": {
         "authentication": "headerAuth",
         "requestMethod": "GET",
@@ -53,7 +65,10 @@
       "name": "Split Offers",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 1,
-      "position": [800, 200],
+      "position": [
+        800,
+        200
+      ],
       "parameters": {
         "batchSize": 1,
         "options": {}
@@ -64,7 +79,10 @@
       "name": "POST Generate Code",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
-      "position": [1100, 200],
+      "position": [
+        1100,
+        200
+      ],
       "parameters": {
         "authentication": "headerAuth",
         "requestMethod": "POST",
@@ -75,7 +93,7 @@
             "response": "json"
           }
         },
-        "bodyParametersJson": "={\"offerId\": $json[\"id\"], \"clientEmail\": $json(\"clientEmail\"), \"channel\": \"automation\"}"
+        "bodyParametersJson": "={\"offerId\": $json[\"id\"], \"clientEmail\": $node[\"Distribution Webhook\"].json[\"clientEmail\"], \"channel\": \"automation\"}"
       },
       "credentials": {
         "httpHeaderAuth": {
@@ -89,18 +107,25 @@
       "name": "Build Email Payload",
       "type": "n8n-nodes-base.set",
       "typeVersion": 1,
-      "position": [1400, 200],
+      "position": [
+        1400,
+        200
+      ],
       "parameters": {
         "keepOnlySet": true,
         "values": {
           "string": [
             {
               "name": "email",
-              "value": "={{$json(\"clientEmail\")}}"
+              "value": "={{$node[\"Distribution Webhook\"].json[\"clientEmail\"]}}"
             },
             {
               "name": "codes",
               "value": "={{$items(\"Generate_Code\").map(item => item.json.codeString).join(', ')}}"
+            },
+            {
+              "name": "offerCount",
+              "value": "={{$items(\"Generate_Code\").length}}"
             }
           ]
         }
@@ -111,12 +136,31 @@
       "name": "SendGrid - Send",
       "type": "n8n-nodes-base.sendEmail",
       "typeVersion": 2,
-      "position": [1675, 200],
+      "position": [
+        1675,
+        200
+      ],
       "parameters": {
-        "fromEmail": "codes@kivalao.app",
+        "fromEmail": "={{$env.NOTIFICATION_FROM_EMAIL || 'codes@kivalao.app'}}",
         "toEmail": "={{$json[\"email\"]}}",
         "subject": "Vos offres partenaires",
-        "text": "Voici vos codes exclusifs : {{$json.codes}}"
+        "text": "=Voici vos codes exclusifs : {{$json.codes}}\nIls expirent selon les conditions indiqu\u00e9es dans chaque offre."
+      }
+    },
+    {
+      "id": "Respond_Success",
+      "name": "Respond to caller",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1950,
+        200
+      ],
+      "parameters": {
+        "responseBody": "{\"status\":\"queued\"}",
+        "responseCode": 200,
+        "responseData": "lastNode",
+        "responseMode": "onReceived"
       }
     }
   ],
@@ -181,6 +225,22 @@
             "index": 0
           }
         ]
+      ]
+    },
+    "SendGrid - Send": {
+      "main": [
+        [
+          {
+            "node": "Respond to caller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to caller": {
+      "main": [
+        []
       ]
     }
   }
